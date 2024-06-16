@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Analysis</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1 class="mt-5">Financial Analysis</h1>
+        <div class="form-group">
+            <input type="text" class="form-control" v-model="query" placeholder="Enter company name" @input="searchCompany">
+            <ul class="list-group mt-2" v-if="suggestions.length">
+                <li class="list-group-item" v-for="suggestion in suggestions" @click="selectCompany(suggestion)">
+                    {{ suggestion.name }} ({{ suggestion.symbol }})
+                </li>
+            </ul>
+        </div>
+        <div v-if="selectedCompany">
+            <h2 class="mt-5">{{ selectedCompany.name }} ({{ selectedCompany.symbol }})</h2>
+            <div v-if="currentRatio !== null">
+                <h4>Current Ratio: <span :class="{'text-success': currentRatio > 1, 'text-danger': currentRatio <= 1}">{{ currentRatio.toFixed(2) }}</span></h4>
+            </div>
+            <div v-if="operatingMargin !== null">
+                <h4>Operating Margin: <span :class="{'text-success': operatingMargin >= 15, 'text-danger': operatingMargin < 15}">{{ operatingMargin.toFixed(2) }}%</span></h4>
+            </div>
+            <canvas id="assetsChart" class="mt-5"></canvas>
+            <canvas id="incomeChart" class="mt-5"></canvas>
+        </div>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                query: '',
+                suggestions: [],
+                selectedCompany: null,
+                currentRatio: null,
+                operatingMargin: null,
+                baseURL: 'https://financialmodelingprep.com/api/v3',
+                apiKey: '6hCNNsJNtaXR3vF94yHbOuqVtRA5lITb' // Replace with your actual API key
+            },
+            methods: {
+                searchCompany() {
+                    if (this.query.length < 2) {
+                        this.suggestions = [];
+                        return;
+                    }
+                    axios.get(`${this.baseURL}/search?query=${this.query}&limit=10&apikey=${this.apiKey}`)
+                        .then(response => {
+                            this.suggestions = response.data;
+                        })
+                        .catch(error => {
+                            console.error('Error fetching data:', error);
+                            this.suggestions = [];
+                        });
+                },
+                selectCompany(company) {
+                    this.selectedCompany = company;
+                    this.suggestions = [];
+                    this.analyzeCompany(company.symbol);
+                },
+                analyzeCompany(ticker) {
+                    axios.get(`${this.baseURL}/balance-sheet-statement/${ticker}?apikey=${this.apiKey}`)
+                        .then(response => {
+                            const balanceSheet = response.data[0];
+                            const totalAssets = balanceSheet.totalAssets;
+                            const totalLiabilities = balanceSheet.totalLiabilities;
+                            this.currentRatio = totalAssets / totalLiabilities;
+
+                            const assets = balanceSheet.totalAssets;
+                            const liabilities = balanceSheet.totalLiabilities;
+                            this.createPieChart('assetsChart', ['Assets', 'Liabilities'], [assets, liabilities]);
+                        })
+                        .catch(error => {
+                            console.error('Error fetching balance sheet data:', error);
+                        });
+
+                    axios.get(`${this.baseURL}/income-statement/${ticker}?period=annual&apikey=${this.apiKey}`)
+                        .then(response => {
+                            const incomeStatement = response.data[0];
+                            const operatingIncome = incomeStatement.operatingIncome;
+                            const totalRevenue = incomeStatement.revenue;
+                            this.operatingMargin = (operatingIncome / totalRevenue) * 100;
+
+                            this.createPieChart('incomeChart', ['Operating Income', 'Revenue'], [operatingIncome, totalRevenue]);
+                        })
+                        .catch(error => {
+                            console.error('Error fetching income statement data:', error);
+                        });
+                },
+                createPieChart(chartId, labels, data) {
+                    const ctx = document.getElementById(chartId).getContext('2d');
+                    new Chart(ctx, {
+                        type: 'pie',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: data,
+                                backgroundColor: ['#007bff', '#dc3545']
+                            }]
+                        }
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>
